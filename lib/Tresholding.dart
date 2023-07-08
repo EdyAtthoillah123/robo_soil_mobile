@@ -192,7 +192,7 @@ class _ThresholdingPageState extends State<ThresholdingPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Thresholding Gambar'),
+        title: Text('Robo Soil'),
       ),
       body: Column(
         children: [
@@ -217,7 +217,7 @@ class _ThresholdingPageState extends State<ThresholdingPage> {
                 Alignment.center, // Menyusun widget secara horizontal di tengah
             child: ElevatedButton(
               onPressed: _applyThresholding,
-              child: Text('Terapkan Thresholding'),
+              child: Text('Proses Image'),
             ),
           ),
         ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:robo_soil/Register.dart';
 import 'Api/Api_Service.dart';
+import 'Dashboard.dart';
 
 void main() {
   runApp(MyApp());
@@ -88,9 +89,17 @@ class LoginScreen extends StatelessWidget {
                 SizedBox(height: 25),
                 ElevatedButton(
                   onPressed: () {
-                    String email = emailController.text;
-                    String password = passwordController.text;
-                    loginUser(context, email, password);
+                    // String email = emailController.text;
+                    // String password = passwordController.text;
+                    // loginUser(context, email, password);
+                    // Route route = MaterialPageRoute(
+                    //   builder: (context) => Dashboard(),
+                    // );
+                    // Navigator.pushReplacement(context, route);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => MyHomePage()),
+                    );
                   },
                   child: Text('Login'),
                   style: ElevatedButton.styleFrom(
