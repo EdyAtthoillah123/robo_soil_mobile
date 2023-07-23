@@ -16,6 +16,7 @@ import 'dart:math';
 import 'package:path/path.dart' as path;
 import 'LodingScreen.dart';
 import 'package:flutter/services.dart';
+import 'package:wifi_iot/wifi_iot.dart';
 
 class MyHomePage extends StatefulWidget {
   final String title;
@@ -30,6 +31,34 @@ class _MyHomePageState extends State<MyHomePage> {
   List<String> _sampleHistory = [];
 
   late CameraController _cameraController;
+
+  Future<void> connectToCamera() async {
+    // Periksa apakah WiFi aktif
+    bool isWifiEnabled = await WiFiForIoTPlugin.isEnabled();
+
+    if (!isWifiEnabled) {
+      // Jika WiFi tidak aktif, tampilkan pesan kesalahan atau tindakan yang sesuai
+      print('WiFi is not enabled');
+      return;
+    }
+
+    // Hubungkan ke jaringan WiFi dari kamera
+    await WiFiForIoTPlugin.connect(
+        'nama_ssid_wifi_camera kata_sandi_wifi_camera');
+
+    // Periksa apakah koneksi WiFi berhasil
+    bool isConnected = await WiFiForIoTPlugin.isConnected();
+
+    if (isConnected) {
+      // Jika berhasil terhubung ke WiFi kamera, lakukan operasi lain yang diperlukan
+      print('Connected to camera WiFi');
+      // Lakukan operasi lainnya seperti streaming video, pengambilan gambar, atau kontrol kamera
+    } else {
+      // Jika gagal terhubung ke WiFi kamera, tampilkan pesan kesalahan atau tindakan yang sesuai
+      print('Failed to connect to camera WiFi');
+    }
+  }
+
   void _openCamera() async {
     // Dapatkan daftar kamera yang tersedia
     List<CameraDescription> cameras = await availableCameras();
@@ -137,7 +166,9 @@ class _MyHomePageState extends State<MyHomePage> {
                         _isImagePicked = true;
                       });
 
-                      await _applyThresholding();
+                      // await _applyThresholding();
+                      await _applyGrayscaleCropEqualizeFilter();
+                      await _applyGrayscaleCropEqualizeLBP();
                       _saveImagePathToDatabase(imagePath);
 
                       setState(() {
@@ -257,7 +288,8 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     child: ElevatedButton(
                       onPressed: () {
-                        _displayBottomDrones(context);
+                        // _displayBottomDrones(context);
+                        connectToCamera();
                       },
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -508,29 +540,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         _pickImage();
                         if (_isImagePicked) {
                           await _applyThresholding();
-                          // if (_applyThresholding() == true) {
-                          // Route route = MaterialPageRoute(
-                          //   builder: (context) => RekapTanah(),
-                          // );
-                          // await Navigator.pushReplacement(context, route);
-                          // }
                         }
-                        // Route route = MaterialPageRoute(
-                        //   builder: (context) => RekapTanah(),
-                        // );
-                        // Navigator.pushReplacement(context, route);
-                        // onPressed: () async {
-                        // _pickImage();
-                        // if (_isImagePicked) {
-                        //   await _applyThresholding();
-                        //   if (_isImageThresholding) {
-                        //     await Future.delayed(Duration.zero);
-                        //     Route route = MaterialPageRoute(
-                        //       builder: (context) => RekapTanah(),
-                        //     );
-                        //     Navigator.pushReplacement(context, route);
-                        //   }
-                        // }
                       },
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -576,7 +586,13 @@ class _MyHomePageState extends State<MyHomePage> {
         _saveImagePathToDatabase(image.path);
         _isImagePicked = true;
         // // print("imagegeee");
-        _applyThresholding();
+        // _applyThresholding();
+        // _applyGrayscale();
+        // _applyGrayscaleAndCrop();
+        // _applyGrayscaleCropEqualizeFilter();
+        // _applyGrayscaleCropEqualizeLBP();
+        // _applyLBPSaja();
+        _applyLBPSajaNormalisasi();
       });
     }
   }
@@ -673,6 +689,711 @@ class _MyHomePageState extends State<MyHomePage> {
 
         Fluttertoast.showToast(
           msg: 'Thresholding berhasil!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+        );
+
+        setState(() {
+          _isLoading = false;
+          _image = null; // Set _image menjadi null
+        });
+      }
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _applyGrayscale() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: LoadingScreen(),
+        );
+      },
+    );
+
+    if (_image != null && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await _image!.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        final grayImage = img.Image.from(originalImage);
+
+        await Future.delayed(Duration(milliseconds: 500));
+
+        for (int i = 0; i < originalImage.width; i++) {
+          for (int j = 0; j < originalImage.height; j++) {
+            final pixel = originalImage.getPixel(i, j);
+            final r = img.getRed(pixel);
+            final g = img.getGreen(pixel);
+            final b = img.getBlue(pixel);
+
+            final gray = (0.299 * r + 0.587 * g + 0.114 * b).round();
+
+            grayImage.setPixelRgba(i, j, gray, gray, gray);
+          }
+        }
+
+        final random = Random();
+        final randomName = '${random.nextInt(100000)}'; // Generate random name
+        final extension = path
+            .extension(_image!.path); // Get the extension from original image
+        // Simpan gambar grayscale dalam format PNG
+        final grayImagePath =
+            '/storage/emulated/0/DCIM/$randomName\_gray$extension';
+
+        await File(grayImagePath).writeAsBytes(img.encodePng(grayImage));
+
+        Fluttertoast.showToast(
+          msg: 'Grayscale berhasil!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+        );
+
+        setState(() {
+          _isLoading = false;
+          _image = null; // Set _image menjadi null
+        });
+      }
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _applyGrayscaleAndCrop() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: LoadingScreen(),
+        );
+      },
+    );
+
+    if (_image != null && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await _image!.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        final grayImage = img.Image.from(originalImage);
+
+        await Future.delayed(Duration(milliseconds: 500));
+
+        for (int i = 0; i < originalImage.width; i++) {
+          for (int j = 0; j < originalImage.height; j++) {
+            final pixel = originalImage.getPixel(i, j);
+            final r = img.getRed(pixel);
+            final g = img.getGreen(pixel);
+            final b = img.getBlue(pixel);
+
+            final gray = (0.299 * r + 0.587 * g + 0.114 * b).round();
+
+            grayImage.setPixelRgba(i, j, gray, gray, gray);
+          }
+        }
+
+        // Crop bagian tengah dengan ukuran 640 x 480 piksel
+        final cropX = (grayImage.width - 640) ~/ 2;
+        final cropY = (grayImage.height - 480) ~/ 2;
+        final croppedImage = img.copyCrop(grayImage, cropX, cropY, 640, 480);
+
+        final random = Random();
+        final randomName = '${random.nextInt(100000)}'; // Generate random name
+        final extension = path
+            .extension(_image!.path); // Get the extension from original image
+
+        // Simpan gambar grayscale dan crop dalam format PNG
+        final croppedImagePath =
+            '/storage/emulated/0/DCIM/$randomName\_crop$extension';
+
+        await File(croppedImagePath).writeAsBytes(img.encodePng(croppedImage));
+
+        Fluttertoast.showToast(
+          msg: 'Grayscale dan Crop berhasil!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+        );
+
+        setState(() {
+          _isLoading = false;
+          _image = null; // Set _image menjadi null
+        });
+      }
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _applyGrayscaleCropEqualizeFilter() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: LoadingScreen(),
+        );
+      },
+    );
+
+    if (_image != null && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await _image!.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        final grayImage = img.Image.from(originalImage);
+
+        await Future.delayed(Duration(milliseconds: 500));
+
+        for (int i = 0; i < originalImage.width; i++) {
+          for (int j = 0; j < originalImage.height; j++) {
+            final pixel = originalImage.getPixel(i, j);
+            final r = img.getRed(pixel);
+            final g = img.getGreen(pixel);
+            final b = img.getBlue(pixel);
+
+            final gray = (0.299 * r + 0.587 * g + 0.114 * b).round();
+
+            grayImage.setPixelRgba(i, j, gray, gray, gray);
+          }
+        }
+
+        // Crop bagian tengah dengan ukuran 640 x 480 piksel
+        final cropX = (grayImage.width - 640) ~/ 2;
+        final cropY = (grayImage.height - 480) ~/ 2;
+        final croppedImage = img.copyCrop(grayImage, cropX, cropY, 640, 480);
+
+        // Perhitungan histogram manual
+        final histogram = List<int>.filled(
+            256, 0); // Inisialisasi histogram dengan ukuran 256 (0-255)
+
+        for (int i = 0; i < croppedImage.width; i++) {
+          for (int j = 0; j < croppedImage.height; j++) {
+            final pixel = croppedImage.getPixel(i, j);
+            final gray = img.getRed(
+                pixel); // Karena gambar sudah grayscale, cukup ambil komponen merah
+
+            histogram[gray]++;
+          }
+        }
+
+        // Penyetaraan histogram secara manual
+        final equalizedImage =
+            img.Image(croppedImage.width, croppedImage.height);
+        final totalPixels = croppedImage.width * croppedImage.height;
+
+        int sum = 0;
+        for (int i = 0; i < histogram.length; i++) {
+          sum += histogram[i];
+          final normalizedValue = (sum * 255) ~/ totalPixels;
+
+          for (int j = 0; j < croppedImage.height; j++) {
+            for (int k = 0; k < croppedImage.width; k++) {
+              final pixel = croppedImage.getPixel(k, j);
+              final gray = img.getRed(
+                  pixel); // Karena gambar sudah grayscale, cukup ambil komponen merah
+
+              if (gray == i) {
+                final newPixel = img.getColor(
+                    normalizedValue, normalizedValue, normalizedValue);
+                equalizedImage.setPixel(k, j, newPixel);
+              }
+            }
+          }
+        }
+
+        // Proses tapis dengan Gaussian Blur menggunakan paket flutter_image
+        final filteredImage = img.gaussianBlur(
+            equalizedImage, 3); // Contoh Gaussian Blur dengan ukuran kernel 3x3
+
+        final random = Random();
+        final randomName = '${random.nextInt(100000)}'; // Generate random name
+        final extension = path
+            .extension(_image!.path); // Get the extension from original image
+
+        // Simpan gambar hasil proses dalam format PNG
+        final processedImagePath =
+            '/storage/emulated/0/DCIM/$randomName\_processed$extension';
+
+        await File(processedImagePath)
+            .writeAsBytes(img.encodePng(filteredImage));
+
+        Fluttertoast.showToast(
+          msg: 'Grayscale, Crop, Equalize Histogram, dan Filter berhasil!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+        );
+
+        setState(() {
+          _isLoading = false;
+          _image = null; // Set _image menjadi null
+        });
+      }
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _applyGrayscaleCropEqualizeLBP() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: LoadingScreen(),
+        );
+      },
+    );
+
+    if (_image != null && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await _image!.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        final grayImage = img.Image.from(originalImage);
+
+        await Future.delayed(Duration(milliseconds: 500));
+
+        for (int i = 0; i < originalImage.width; i++) {
+          for (int j = 0; j < originalImage.height; j++) {
+            final pixel = originalImage.getPixel(i, j);
+            final r = img.getRed(pixel);
+            final g = img.getGreen(pixel);
+            final b = img.getBlue(pixel);
+
+            final gray = (0.299 * r + 0.587 * g + 0.114 * b).round();
+
+            grayImage.setPixelRgba(i, j, gray, gray, gray);
+          }
+        }
+
+        print('Gambar Grayscale:');
+        print(img.encodePng(grayImage));
+
+        // Simpan gambar grayscale dalam format PNG
+        final grayImagePath = '/storage/emulated/0/DCIM/gray_image.png';
+        await File(grayImagePath).writeAsBytes(img.encodePng(grayImage));
+
+        // Crop bagian tengah dengan ukuran 640 x 480 piksel
+        final cropX = (grayImage.width - 640) ~/ 2;
+        final cropY = (grayImage.height - 480) ~/ 2;
+        final croppedImage = img.copyCrop(grayImage, cropX, cropY, 640, 480);
+
+        // Simpan gambar cropped dalam format PNG
+        final croppedImagePath = '/storage/emulated/0/DCIM/cropped_image.png';
+        await File(croppedImagePath).writeAsBytes(img.encodePng(croppedImage));
+
+        // Perhitungan histogram manual
+        final histogram = List<int>.filled(
+            256, 0); // Inisialisasi histogram dengan ukuran 256 (0-255)
+
+        for (int i = 0; i < croppedImage.width; i++) {
+          for (int j = 0; j < croppedImage.height; j++) {
+            final pixel = croppedImage.getPixel(i, j);
+            final gray = img.getRed(
+                pixel); // Karena gambar sudah grayscale, cukup ambil komponen merah
+
+            histogram[gray]++;
+          }
+        }
+
+        // Penyetaraan histogram secara manual
+        final equalizedImage =
+            img.Image(croppedImage.width, croppedImage.height);
+        final totalPixels = croppedImage.width * croppedImage.height;
+
+        int sum = 0;
+        for (int i = 0; i < histogram.length; i++) {
+          sum += histogram[i];
+          final normalizedValue = (sum * 255) ~/ totalPixels;
+
+          for (int j = 0; j < croppedImage.height; j++) {
+            for (int k = 0; k < croppedImage.width; k++) {
+              final pixel = croppedImage.getPixel(k, j);
+              final gray = img.getRed(
+                  pixel); // Karena gambar sudah grayscale, cukup ambil komponen merah
+
+              if (gray == i) {
+                final newPixel = img.getColor(
+                    normalizedValue, normalizedValue, normalizedValue);
+                equalizedImage.setPixel(k, j, newPixel);
+              }
+            }
+          }
+        }
+
+        // Simpan gambar hasil penyetaraan histogram dalam format PNG
+        final equalizedImagePath =
+            '/storage/emulated/0/DCIM/equalized_image.png';
+        await File(equalizedImagePath)
+            .writeAsBytes(img.encodePng(equalizedImage));
+
+        // Ekstraksi tekstur menggunakan Local Binary Pattern (LBP)
+        final lbpImage = img.Image(croppedImage.width, croppedImage.height);
+        final lbpDecimalValues = [];
+        final scale = 255 / 256;
+
+        for (int i = 1; i < croppedImage.width - 1; i++) {
+          for (int j = 1; j < croppedImage.height - 1; j++) {
+            final center = equalizedImage.getPixel(i, j);
+            final centerGray = img.getRed(center);
+
+            var code = 0;
+
+            // Bandingkan nilai piksel dengan tetangganya
+            code |=
+                (equalizedImage.getPixel(i - 1, j - 1) > centerGray ? 1 : 0) <<
+                    7;
+            code |=
+                (equalizedImage.getPixel(i, j - 1) > centerGray ? 1 : 0) << 6;
+            code |=
+                (equalizedImage.getPixel(i + 1, j - 1) > centerGray ? 1 : 0) <<
+                    5;
+            code |=
+                (equalizedImage.getPixel(i + 1, j) > centerGray ? 1 : 0) << 4;
+            code |=
+                (equalizedImage.getPixel(i + 1, j + 1) > centerGray ? 1 : 0) <<
+                    3;
+            code |=
+                (equalizedImage.getPixel(i, j + 1) > centerGray ? 1 : 0) << 2;
+            code |=
+                (equalizedImage.getPixel(i - 1, j + 1) > centerGray ? 1 : 0) <<
+                    1;
+            code |=
+                (equalizedImage.getPixel(i - 1, j) > centerGray ? 1 : 0) << 0;
+
+            // Skala piksel LBP dari 0-255 ke 0-255
+            final scaledCode = (code * scale).round();
+
+            // Simpan nilai desimal LBP pada citra LBP
+            final pixelValue = img.getColor(scaledCode, scaledCode, scaledCode);
+            lbpImage.setPixel(i, j, pixelValue);
+
+            // Tambahkan nilai desimal ke dalam daftar lbpDecimalValues
+            lbpDecimalValues.add(scaledCode);
+          }
+        }
+
+// // Simpan gambar hasil ekstraksi LBP dalam format PNG
+//         final lbpImagePath = '/storage/emulated/0/DCIM/lbp_image.png';
+//         await File(lbpImagePath).writeAsBytes(img.encodePng(lbpImage));
+
+        // print(lbpImage);
+        print("Nilai LBP : ");
+        print(img.encodePng(lbpImage));
+// Cetak output nilai desimal LBP
+        print('Nilai desimal LBP: $lbpDecimalValues');
+
+        Fluttertoast.showToast(
+          msg: 'Grayscale, Crop, Equalize Histogram, dan LBP berhasil!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+        );
+
+        setState(() {
+          _isLoading = false;
+          _image = null; // Set _image menjadi null
+        });
+      }
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _applyLBPSaja() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: LoadingScreen(),
+        );
+      },
+    );
+
+    if (_image != null && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await _image!.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        final grayImage = img.grayscale(originalImage);
+
+        // Cetak gambar grayscale pada konsol
+        print('Gambar Grayscale:');
+        print(img.encodePng(grayImage));
+
+        // Crop bagian tengah dengan ukuran 640 x 480 piksel
+        final cropX = (grayImage.width - 640) ~/ 2;
+        final cropY = (grayImage.height - 480) ~/ 2;
+        final croppedImage = img.copyCrop(grayImage, cropX, cropY, 640, 480);
+
+        // Ekstraksi tekstur menggunakan Local Binary Pattern (LBP)
+        final lbpImage = img.Image(croppedImage.width, croppedImage.height);
+        final lbpDecimalValues = [];
+        final scale = 255 / 255; // Update scale to 255 / 255
+
+        for (int i = 1; i < croppedImage.width - 1; i++) {
+          for (int j = 1; j < croppedImage.height - 1; j++) {
+            final center = croppedImage.getPixel(i, j);
+            final centerGray = img.getRed(center);
+
+            var code = 0;
+
+            // Bandingkan nilai piksel dengan tetangganya
+            code |=
+                (croppedImage.getPixel(i - 1, j - 1) > centerGray ? 1 : 0) << 7;
+            code |= (croppedImage.getPixel(i, j - 1) > centerGray ? 1 : 0) << 6;
+            code |=
+                (croppedImage.getPixel(i + 1, j - 1) > centerGray ? 1 : 0) << 5;
+            code |= (croppedImage.getPixel(i + 1, j) > centerGray ? 1 : 0) << 4;
+            code |=
+                (croppedImage.getPixel(i + 1, j + 1) > centerGray ? 1 : 0) << 3;
+            code |= (croppedImage.getPixel(i, j + 1) > centerGray ? 1 : 0) << 2;
+            code |=
+                (croppedImage.getPixel(i - 1, j + 1) > centerGray ? 1 : 0) << 1;
+            code |= (croppedImage.getPixel(i - 1, j) > centerGray ? 1 : 0) << 0;
+
+            // Skala piksel LBP dari 0-255 ke 0-255
+            final scaledCode = (code * scale).round();
+
+            // Simpan nilai desimal LBP pada citra LBP
+            final pixelValue = img.getColor(scaledCode, scaledCode, scaledCode);
+            lbpImage.setPixel(i, j, pixelValue);
+
+            // Tambahkan nilai desimal ke dalam daftar lbpDecimalValues
+            lbpDecimalValues.add(scaledCode);
+          }
+        }
+
+        // Cetak gambar LBP pada konsol
+        print('Gambar LBP:');
+        print(img.encodePng(lbpImage));
+
+        // Cetak output nilai desimal LBP
+        print('Nilai desimal LBP: $lbpDecimalValues');
+
+        Fluttertoast.showToast(
+          msg: 'Ekstraksi LBP berhasil!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+        );
+
+        setState(() {
+          _isLoading = false;
+          _image = null; // Set _image menjadi null
+        });
+      }
+    }
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _applyLBPSajaNormalisasi() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: LoadingScreen(),
+        );
+      },
+    );
+
+    if (_image != null && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await _image!.readAsBytes();
+      final originalImage = img.decodeImage(bytes);
+
+      if (originalImage != null) {
+        final grayImage = img.grayscale(originalImage);
+
+        // Cetak gambar grayscale pada konsol
+        print('Gambar Grayscale:');
+        print(img.encodePng(grayImage));
+
+        // Crop bagian tengah dengan ukuran 640 x 480 piksel
+        final cropX = (grayImage.width - 640) ~/ 2;
+        final cropY = (grayImage.height - 480) ~/ 2;
+        final croppedImage = img.copyCrop(grayImage, cropX, cropY, 640, 480);
+
+        // Ekstraksi tekstur menggunakan Local Binary Pattern (LBP)
+        final lbpImage = img.Image(croppedImage.width, croppedImage.height);
+        final lbpDecimalValues = [];
+        final scale = 255 / 255; // Update scale to 255 / 255
+
+        for (int i = 1; i < croppedImage.width - 1; i++) {
+          for (int j = 1; j < croppedImage.height - 1; j++) {
+            final center = croppedImage.getPixel(i, j);
+            final centerGray = img.getRed(center);
+
+            var code = 0;
+
+            // Bandingkan nilai piksel dengan tetangganya
+            code |=
+                (croppedImage.getPixel(i - 1, j - 1) > centerGray ? 1 : 0) << 7;
+            code |= (croppedImage.getPixel(i, j - 1) > centerGray ? 1 : 0) << 6;
+            code |=
+                (croppedImage.getPixel(i + 1, j - 1) > centerGray ? 1 : 0) << 5;
+            code |= (croppedImage.getPixel(i + 1, j) > centerGray ? 1 : 0) << 4;
+            code |=
+                (croppedImage.getPixel(i + 1, j + 1) > centerGray ? 1 : 0) << 3;
+            code |= (croppedImage.getPixel(i, j + 1) > centerGray ? 1 : 0) << 2;
+            code |=
+                (croppedImage.getPixel(i - 1, j + 1) > centerGray ? 1 : 0) << 1;
+            code |= (croppedImage.getPixel(i - 1, j) > centerGray ? 1 : 0) << 0;
+
+            // Skala piksel LBP dari 0-255 ke 0-255
+            final scaledCode = (code * scale).round();
+
+            // Simpan nilai desimal LBP pada citra LBP
+            final pixelValue = img.getColor(scaledCode, scaledCode, scaledCode);
+            lbpImage.setPixel(i, j, pixelValue);
+
+            // Tambahkan nilai desimal ke dalam daftar lbpDecimalValues
+            lbpDecimalValues.add(scaledCode);
+          }
+        }
+
+        // Cetak gambar LBP pada konsol
+        print('Gambar LBP:');
+        print(img.encodePng(lbpImage));
+
+        final countMap = <int, int>{};
+
+        for (final value in img.encodePng(lbpImage)) {
+          final intValue = value.toInt();
+          countMap[intValue] = (countMap[intValue] ?? 0) + 1;
+        }
+
+// Print the occurrence count
+        for (final entry in countMap.entries) {
+          print('Value: ${entry.key}, Jumlah kemunculan: ${entry.value}');
+        }
+
+        // final countMap = <int, int>{};
+
+        for (final value in img.encodePng(lbpImage)) {
+          final intValue = value.toInt();
+          countMap[intValue] = (countMap[intValue] ?? 0) + 1;
+        }
+
+// Calculate the total occurrences
+        int totalOccurrences = 0;
+        for (final entry in countMap.entries) {
+          totalOccurrences += entry.value;
+        }
+
+        print('Total Kemunculan: $totalOccurrences');
+
+        for (final entry in countMap.entries) {
+          final percentage = entry.value / totalOccurrences * 100;
+          print(
+              'Value: ${entry.key}, Jumlah kemunculan: ${entry.value}, Persentase: $percentage%');
+        }
+
+//         final countMap = <int, int>{};
+
+//         for (int i = 0; i <= 255; i++) {
+//           countMap[i] = 0;
+//         }
+
+//         for (final value in lbpImage.data) {
+//           if (value >= 0 && value <= 255) {
+//             countMap[value] = countMap[value]! + 1;
+//           }
+//         }
+
+// // Print the occurrence count
+//         for (int i = 0; i <= 255; i++) {
+//           print('Value: $i, Jumlah kemunculan: ${countMap[i]}');
+//         }
+
+//         final countMap = <int, int>{};
+
+//         for (final value in img.encodePng(lbpImage)) {
+//           final intValue = value.toInt();
+//           if (intValue >= 0 && intValue <= 255) {
+//             countMap[intValue] = (countMap[intValue] ?? 0) + 1;
+//           }
+//         }
+
+// // Print the occurrence count
+//         for (int i = 0; i <= 255; i++) {
+//           final occurrenceCount = countMap[i] ?? 0;
+//           print('Value: $i, Jumlah kemunculan: $occurrenceCount');
+//         }
+
+//         final countMap = <int, int>{};
+
+//         for (final value in img.encodePng(lbpImage)) {
+//           final intValue = value.toInt();
+//           countMap[intValue] = (countMap[intValue] ?? 0) + 1;
+//         }
+
+// // Print the occurrence count
+//         for (final entry in countMap.entries) {
+//           print('Value: ${entry.key}, Jumlah kemunculan: ${entry.value}');
+//         }
+
+//         final countMap = <int, int>{};
+//         for (final value in lbpImage.data) {
+//           countMap[value] = (countMap[value] ?? 0) + 1;
+//         }
+
+// // Cetak hasil jumlah kemunculan
+//         countMap.forEach((value, count) {
+//           print('Nilai: $value, Jumlah Kemunculan: $count');
+//         });
+
+        // // Normalisasi LBP
+        // final normalizedLbpDecimalValues =
+        //     lbpDecimalValues.map((value) => value / 255).toList();
+
+        // // Cetak output nilai desimal LBP
+        // print(
+        //     'Nilai desimal LBP (Setelah Normalisasi): $normalizedLbpDecimalValues');
+
+        // Normalisasi LBP
+        // final maxCode = (255 * scale).round();
+        // final normalizedLbpDecimalValues =
+        //     lbpDecimalValues.map((value) => value / maxCode).toList();
+
+        // print(
+        //     'Nilai desimal LBP (Setelah Normalisasi): $normalizedLbpDecimalValues');
+
+        Fluttertoast.showToast(
+          msg: 'Ekstraksi LBP berhasil!',
           toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: Colors.black54,
