@@ -22,6 +22,7 @@ class MyApp extends StatelessWidget {
 class LoginScreen extends StatelessWidget {
   TextEditingController emailController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -89,17 +90,17 @@ class LoginScreen extends StatelessWidget {
                 SizedBox(height: 25),
                 ElevatedButton(
                   onPressed: () {
-                    // String email = emailController.text;
-                    // String password = passwordController.text;
-                    // loginUser(context, email, password);
+                    String email = emailController.text;
+                    String password = passwordController.text;
+                    loginUser(context, email, password);
                     // Route route = MaterialPageRoute(
                     //   builder: (context) => Dashboard(),
                     // );
                     // Navigator.pushReplacement(context, route);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => MyHomePage()),
-                    );
+                    // Navigator.push(
+                    //   context,
+                    //   MaterialPageRoute(builder: (context) => MyHomePage()),
+                    // );
                   },
                   child: Text('Login'),
                   style: ElevatedButton.styleFrom(

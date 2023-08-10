@@ -4,6 +4,7 @@ import 'package:robo_soil/Dashboard.dart';
 import 'Api_Connect.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> registerUser(String name, String email, String password) async {
   final apiUrl = Uri.parse(ApiConnect.register);
@@ -47,19 +48,16 @@ Future<void> loginUser(
   );
 
   if (response.statusCode == 200) {
-    // Login berhasil
     final data = jsonDecode(response.body);
-    final token = data['token'];
-    final user = data['user'];
+    // Simpan email dan password ke shared preferences
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setString('email', email);
+    prefs.setString('password', password);
 
-    print('Login successful');
-    print('Token: $token');
-    print('User: $user');
-
+    print('Login Berhasil');
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => MyHomePage()),
     );
-    print('Registrasi gagal');
     Fluttertoast.showToast(
       msg: 'Login Berhasil',
       toastLength: Toast.LENGTH_SHORT,
@@ -71,7 +69,6 @@ Future<void> loginUser(
   } else {
     // Respons lainnya
     print('Login failed');
-    print('Registrasi gagal');
     Fluttertoast.showToast(
       msg: 'Gagal Login',
       toastLength: Toast.LENGTH_SHORT,
@@ -136,25 +133,32 @@ Future<List<Berita>> fetchBerita() async {
 class ImageTanaman {
   final int id;
   final String image;
+  final String tanaman;
 
-  ImageTanaman({required this.id, required this.image});
+  ImageTanaman({required this.id, required this.image, required this.tanaman});
 
   factory ImageTanaman.fromJson(Map<String, dynamic> json) {
     return ImageTanaman(
       id: json['id'],
       image: json['imagepath'],
+      tanaman: json['tanaman'],
     );
   }
 }
 
 Future<List<ImageTanaman>> fetchImage() async {
-  final response = await http.get(Uri.parse(ApiConnect.rekap));
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String email = prefs.getString('email') ?? '';
+
+  final response = await http.get(Uri.parse(ApiConnect.rekap + '/' + '$email'));
 
   if (response.statusCode == 200) {
-    final List<dynamic> responseData = json.decode(response.body);
-    final List<ImageTanaman> users =
-        responseData.map((json) => ImageTanaman.fromJson(json)).toList();
-    return users;
+    final Map<String, dynamic> responseData = json.decode(response.body);
+    final List<dynamic> userImages =
+        responseData['user']; // Ambil daftar gambar dari respons JSON
+    final List<ImageTanaman> images =
+        userImages.map((json) => ImageTanaman.fromJson(json)).toList();
+    return images;
   } else {
     throw Exception('Failed to fetch data');
   }

@@ -17,6 +17,7 @@ import 'package:path/path.dart' as path;
 import 'LodingScreen.dart';
 import 'package:flutter/services.dart';
 import 'package:wifi_iot/wifi_iot.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MyHomePage extends StatefulWidget {
   final String title;
@@ -111,10 +112,19 @@ class _MyHomePageState extends State<MyHomePage> {
     _cameraController.dispose();
   }
 
-  void _saveImagePathToDatabase(String imagePath) async {
+  void _saveImagePathToDatabase(
+      String imagePath, String landType, String elevationh) async {
     final url = Uri.parse(ApiConnect.image);
-    final response = await http.post(url, body: {'imagePath': imagePath});
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String email = prefs.getString('email') ?? '';
+    final response = await http.post(url, body: {
+      'imagePath': imagePath,
+      'email': email,
+      'dataran': elevationh,
+      'lahan': landType
+    });
     print(imagePath);
+    print(email);
     if (response.statusCode == 200) {
       print('Path gambar berhasil disimpan di database');
       _sampleHistory.add(imagePath); // Tambahkan path gambar ke dalam riwayat
@@ -145,50 +155,120 @@ class _MyHomePageState extends State<MyHomePage> {
         await ImageGallerySaver.saveFile(imagePath);
         // _saveImagePathToDatabase(
         //     imagePath); // Panggil metode _saveImagePathToDatabase() di sini
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Gambar diambil'),
-              content: Image.file(File(imagePath)),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: Text('Tutup'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    if (imagePath != null) {
-                      setState(() {
-                        _image = File(imagePath);
-                        _isImagePicked = true;
-                      });
+        if (imagePath != null) {
+          String selectedLandType = 'Basah';
+          String selectedElevation = 'Tinggi';
 
-                      // await _applyThresholding();
-                      await _applyGrayscaleCropEqualizeFilter();
-                      await _applyGrayscaleCropEqualizeLBP();
-                      _saveImagePathToDatabase(imagePath);
-
-                      setState(() {
-                        imagePath =
-                            ''; // Set imagePath menjadi string kosong setelah thresholding
-                      });
-                    }
-
-                    Route route = MaterialPageRoute(
-                      builder: (context) => RekapTanah(),
-                    );
-                    Navigator.pushReplacement(context,
-                        route); // Gunakan pushReplacement untuk menggantikan halaman saat ini dengan halaman rekap
-                  },
-                  child: Text("Proses image"),
-                ),
-              ],
-            );
-          },
-        );
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return StatefulBuilder(
+                builder: (context, setState) {
+                  return AlertDialog(
+                    title: Text("Preview Image"),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.contain,
+                            child: Image.file(File(imagePath)),
+                          ),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("Jenis Tanah:"),
+                            DropdownButton<String>(
+                              value: selectedLandType,
+                              onChanged: (String? newValue) {
+                                setState(() {
+                                  selectedLandType =
+                                      newValue ?? selectedLandType;
+                                });
+                              },
+                              items: [
+                                DropdownMenuItem<String>(
+                                  value: 'Basah',
+                                  child: Text('Basah'),
+                                ),
+                                DropdownMenuItem<String>(
+                                  value: 'Kering',
+                                  child: Text('Kering'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("Jenis Dataran:"),
+                            DropdownButton<String>(
+                              value: selectedElevation,
+                              onChanged: (String? newValue) {
+                                setState(() {
+                                  selectedElevation =
+                                      newValue ?? selectedElevation;
+                                });
+                              },
+                              items: [
+                                DropdownMenuItem<String>(
+                                  value: 'Tinggi',
+                                  child: Text('Tinggi'),
+                                ),
+                                DropdownMenuItem<String>(
+                                  value: 'Rendah',
+                                  child: Text('Rendah'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    actions: <Widget>[
+                      TextButton(
+                        child: Text("Cancel"),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                      TextButton(
+                        child: Text("Proses"),
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Close the dialog
+                          _saveImagePathToDatabase(
+                              imagePath, selectedLandType, selectedElevation);
+                          _applyLBPSajaNormalisasi();
+                          // Optionally, you can show a confirmation dialog after saving
+                          showDialog(
+                            context: context,
+                            builder: (BuildContext context) {
+                              return AlertDialog(
+                                title: Text("Image Saved"),
+                                content: Text(
+                                    "Image path, land type, and elevation have been saved."),
+                                actions: <Widget>[
+                                  TextButton(
+                                    child: Text("OK"),
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        }
       } else {
         print('Izin penyimpanan ditolak');
       }
@@ -580,22 +660,148 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _pickImage() async {
     final image = await _picker.pickImage(source: ImageSource.gallery);
+
     if (image != null) {
-      setState(() {
-        _image = File(image.path);
-        _saveImagePathToDatabase(image.path);
-        _isImagePicked = true;
-        // // print("imagegeee");
-        // _applyThresholding();
-        // _applyGrayscale();
-        // _applyGrayscaleAndCrop();
-        // _applyGrayscaleCropEqualizeFilter();
-        // _applyGrayscaleCropEqualizeLBP();
-        // _applyLBPSaja();
-        _applyLBPSajaNormalisasi();
-      });
+      String selectedLandType = 'Basah';
+      String selectedElevation = 'Tinggi';
+
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: Text("Preview Image"),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: Image.file(File(image.path)),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Jenis Tanah:"),
+                        DropdownButton<String>(
+                          value: selectedLandType,
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              selectedLandType = newValue ?? selectedLandType;
+                            });
+                          },
+                          items: [
+                            DropdownMenuItem<String>(
+                              value: 'Basah',
+                              child: Text('Basah'),
+                            ),
+                            DropdownMenuItem<String>(
+                              value: 'Kering',
+                              child: Text('Kering'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Jenis Dataran:"),
+                        DropdownButton<String>(
+                          value: selectedElevation,
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              selectedElevation = newValue ?? selectedElevation;
+                            });
+                          },
+                          items: [
+                            DropdownMenuItem<String>(
+                              value: 'Tinggi',
+                              child: Text('Tinggi'),
+                            ),
+                            DropdownMenuItem<String>(
+                              value: 'Rendah',
+                              child: Text('Rendah'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    child: Text("Cancel"),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                  TextButton(
+                    child: Text("Proses"),
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Close the dialog
+                      _saveImagePathToDatabase(
+                          image.path, selectedLandType, selectedElevation);
+                      _applyLBPSajaNormalisasi();
+                      // Optionally, you can show a confirmation dialog after saving
+                      showDialog(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: Text("Image Saved"),
+                            content: Text(
+                                "Image path, land type, and elevation have been saved."),
+                            actions: <Widget>[
+                              TextButton(
+                                child: Text("OK"),
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
     }
   }
+
+  // Future<void> _pickImage() async {
+  //   final image = await _picker.pickImage(source: ImageSource.gallery);
+  //   if (image != null) {
+  //     setState(() {
+  //       // _image = File(image.path);
+  //       _saveImagePathToDatabase(image.path);
+  //       // _isImagePicked = true;
+  //       // print("imagegeee");
+  //       // _applyThresholding();
+  //       // _applyGrayscale();
+  //       // _applyGrayscaleAndCrop();
+  //       // _applyGrayscaleCropEqualizeFilter();
+  //       // _applyGrayscaleCropEqualizeLBP();
+  //       // _applyLBPSaja();
+  //       // _applyLBPSajaNormalisasi();
+  //     });
+  //   }
+  // }
+
+  // Future<void> _pickImagee() async {
+  //   final image = await _picker.pickImage(source: ImageSource.gallery);
+  //   if (image != null) {
+  //     setState(() {
+  //       _saveImagePathToDatabase(image.path);
+  //     });
+  //   }
+  // }
 
   bool _isLoading =
       false; // Variable untuk menandakan apakah sedang loading atau tidak
